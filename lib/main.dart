@@ -2,14 +2,10 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_tts/flutter_tts.dart';
-import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:timezone/data/latest_all.dart' as tz;
-import 'package:timezone/timezone.dart' as tz;
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  tz.initializeTimeZones();
   runApp(const RoutineAlarmApp());
 }
 
@@ -30,7 +26,6 @@ class RoutineAlarmApp extends StatelessWidget {
           secondary: Color(0xFF10B981),
           surface: Color(0xFF1E293B),
         ),
-        fontFamily: 'Roboto',
       ),
       home: const HomeScreen(),
     );
@@ -41,7 +36,7 @@ enum TaskCategory { prayer, youtube, office, course, meal, sleep }
 
 class RoutineTask {
   final String id;
-  String startTime; // HH:mm (24h)
+  String startTime;
   String endTime;
   final String title;
   final String subtitle;
@@ -68,16 +63,13 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   final FlutterTts _flutterTts = FlutterTts();
-  final FlutterLocalNotificationsPlugin _notificationsPlugin =
-      FlutterLocalNotificationsPlugin();
 
   Timer? _clockTimer;
   DateTime _now = DateTime.now();
-  String _selectedDayType = 'auto'; // auto, sun_tue_thu, mon_wed, fri, sat
+  String _selectedDayType = 'auto';
   bool _alarmEnabled = true;
   String? _lastTriggeredKey;
 
-  // Prayer Times (Customizable per Islamic Foundation schedule)
   Map<String, String> _prayerTimes = {
     'fajr': '05:30',
     'dhuhr': '13:30',
@@ -86,10 +78,8 @@ class _HomeScreenState extends State<HomeScreen> {
     'isha': '19:30',
   };
 
-  // Weekly 7 YouTube Videos Tracker (EverRise Audiobooks)
   List<bool> _ytVideosDone = List.filled(7, false);
 
-  // 2026 Government Holidays (Red circled dates from Calendar)
   final List<String> _holidays2026 = [
     '2026-02-04',
     '2026-02-21',
@@ -129,17 +119,6 @@ class _HomeScreenState extends State<HomeScreen> {
     await _flutterTts.setLanguage("bn-BD");
     await _flutterTts.setSpeechRate(0.48);
     await _flutterTts.setPitch(1.0);
-
-    const androidSettings = AndroidInitializationSettings('@mipmap/ic_launcher');
-    const initSettings = InitializationSettings(android: androidSettings);
-    await _notificationsPlugin.initialize(
-      initSettings,
-      onDidReceiveNotificationResponse: (details) {
-        if (details.payload != null) {
-          _speakAlarm(details.payload!);
-        }
-      },
-    );
   }
 
   Future<void> _loadSavedData() async {
@@ -153,7 +132,6 @@ class _HomeScreenState extends State<HomeScreen> {
         _ytVideosDone[i] = prefs.getBool('yt_done_$i') ?? false;
       }
     });
-    _scheduleAllDayNotifications();
   }
 
   Future<void> _savePrayerTime(String key, String value) async {
@@ -162,7 +140,6 @@ class _HomeScreenState extends State<HomeScreen> {
     setState(() {
       _prayerTimes[key] = value;
     });
-    _scheduleAllDayNotifications();
   }
 
   Future<void> _toggleYtVideo(int index) async {
@@ -429,7 +406,6 @@ class _HomeScreenState extends State<HomeScreen> {
       ];
     }
 
-    // Office Days (Sun, Tue, Thu OR Mon, Wed)
     List<RoutineTask> officeTasks = [
       RoutineTask(
         id: 'off_fajr',
@@ -610,7 +586,6 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _playDistinctEffect(TaskCategory category) async {
-    // Distinct vibration + system sound pattern per category
     switch (category) {
       case TaskCategory.prayer:
         await SystemSound.play(SystemSoundType.alert);
@@ -671,52 +646,6 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  Future<void> _scheduleAllDayNotifications() async {
-    await _notificationsPlugin.cancelAll();
-    if (!_alarmEnabled) return;
-
-    final tasks = _getTasksForType(_getEffectiveDayType());
-    int id = 100;
-    for (final task in tasks) {
-      final parts = task.startTime.split(':');
-      final hour = int.parse(parts[0]);
-      final minute = int.parse(parts[1]);
-
-      var scheduledDate = DateTime(
-        _now.year,
-        _now.month,
-        _now.day,
-        hour,
-        minute,
-      );
-      if (scheduledDate.isBefore(_now)) {
-        scheduledDate = scheduledDate.add(const Duration(days: 1));
-      }
-
-      const androidDetails = AndroidNotificationDetails(
-        'routine_alarm_channel',
-        'Routine Voice Alarms',
-        channelDescription: 'Daily routine task voice alarms',
-        importance: Importance.max,
-        priority: Priority.high,
-        fullScreenIntent: true,
-        playSound: true,
-      );
-
-      await _notificationsPlugin.zonedSchedule(
-        id++,
-        '⏰ ${task.title}',
-        task.voiceMessage,
-        tz.TZDateTime.from(scheduledDate, tz.local),
-        const NotificationDetails(android: androidDetails),
-        androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
-        uiLocalNotificationDateInterpretation:
-            UILocalNotificationDateInterpretation.absoluteTime,
-        payload: task.voiceMessage,
-      );
-    }
-  }
-
   void _showAlarmDialog(RoutineTask task) {
     showDialog(
       context: context,
@@ -736,9 +665,7 @@ class _HomeScreenState extends State<HomeScreen> {
           ],
         ),
         content: Text(
-          '${task.voiceMessage}
-
-সময়: ${task.startTime} - ${task.endTime}',
+          '${task.voiceMessage}\n\nসময়: ${task.startTime} - ${task.endTime}',
           style: const TextStyle(fontSize: 15),
         ),
         actions: [
@@ -758,17 +685,17 @@ class _HomeScreenState extends State<HomeScreen> {
   Color _getCategoryColor(TaskCategory cat) {
     switch (cat) {
       case TaskCategory.prayer:
-        return const Color(0xFF10B981); // Emerald
+        return const Color(0xFF10B981);
       case TaskCategory.youtube:
-        return const Color(0xFFF43F5E); // Rose/Red
+        return const Color(0xFFF43F5E);
       case TaskCategory.office:
-        return const Color(0xFF38BDF8); // Sky Blue
+        return const Color(0xFF38BDF8);
       case TaskCategory.course:
-        return const Color(0xFFA855F7); // Purple
+        return const Color(0xFFA855F7);
       case TaskCategory.meal:
-        return const Color(0xFFF59E0B); // Amber
+        return const Color(0xFFF59E0B);
       case TaskCategory.sleep:
-        return const Color(0xFF6366F1); // Indigo
+        return const Color(0xFF6366F1);
     }
   }
 
@@ -781,7 +708,7 @@ class _HomeScreenState extends State<HomeScreen> {
       case TaskCategory.office:
         return Icons.work;
       case TaskCategory.course:
-        return Icons.Memory;
+        return Icons.memory;
       case TaskCategory.meal:
         return Icons.restaurant;
       case TaskCategory.sleep:
@@ -878,14 +805,12 @@ class _HomeScreenState extends State<HomeScreen> {
               final prefs = await SharedPreferences.getInstance();
               await prefs.setBool('alarm_enabled', val);
               setState(() => _alarmEnabled = val);
-              _scheduleAllDayNotifications();
             },
           ),
         ],
       ),
       body: Column(
         children: [
-          // Top Live Clock & Weekly YouTube Tracker Banner
           Container(
             width: double.infinity,
             padding: const EdgeInsets.all(14),
@@ -928,7 +853,6 @@ class _HomeScreenState extends State<HomeScreen> {
                   ],
                 ),
                 const SizedBox(height: 8),
-                // 7 Day Video Checkboxes
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: List.generate(7, (index) {
@@ -960,8 +884,6 @@ class _HomeScreenState extends State<HomeScreen> {
               ],
             ),
           ),
-
-          // Day Type Selector Tabs
           SingleChildScrollView(
             scrollDirection: Axis.horizontal,
             padding: const EdgeInsets.symmetric(horizontal: 10),
@@ -976,8 +898,6 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
           ),
           const SizedBox(height: 8),
-
-          // Routine Task List
           Expanded(
             child: ListView.builder(
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
