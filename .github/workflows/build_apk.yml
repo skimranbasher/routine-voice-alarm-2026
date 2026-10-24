@@ -21,19 +21,11 @@ jobs:
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.24.0'
+          flutter-version: '3.19.0'
           channel: 'stable'
 
-      - name: Prepare Clean Flutter Android Project
-        run: |
-          cp lib/main.dart /tmp/main.dart
-          flutter create --platforms=android --org com.everrise --project-name routine_alarm_app .
-          cp /tmp/main.dart lib/main.dart
-          flutter pub add flutter_tts shared_preferences intl
-
-      - name: Fix Android Manifest Permissions
-        run: |
-          sed -i 's/<application/<uses-permission android:name="android.permission.VIBRATE"\/><uses-permission android:name="android.permission.WAKE_LOCK"\/><application/g' android/app/src/main/AndroidManifest.xml
+      - name: Install Dependencies
+        run: flutter pub get
 
       - name: Build Release APK
         run: flutter build apk --release
